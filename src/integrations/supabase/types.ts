@@ -14,6 +14,57 @@ export type Database = {
   }
   public: {
     Tables: {
+      mood_requests: {
+        Row: {
+          created_at: string
+          id: string
+          mood: string
+          picks: Json
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          mood: string
+          picks?: Json
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          mood?: string
+          picks?: Json
+        }
+        Relationships: []
+      }
+      orders: {
+        Row: {
+          created_at: string
+          details: string
+          event_date: string | null
+          id: string
+          name: string
+          occasion: string
+          work_type: string
+        }
+        Insert: {
+          created_at?: string
+          details?: string
+          event_date?: string | null
+          id?: string
+          name: string
+          occasion?: string
+          work_type: string
+        }
+        Update: {
+          created_at?: string
+          details?: string
+          event_date?: string | null
+          id?: string
+          name?: string
+          occasion?: string
+          work_type?: string
+        }
+        Relationships: []
+      }
       tracks: {
         Row: {
           audio_path: string | null
