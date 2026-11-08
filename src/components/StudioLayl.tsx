@@ -1,4 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
+import type { Session } from "@supabase/supabase-js";
+import { supabase } from "@/integrations/supabase/client";
+import { listTracks, recommendTracks } from "@/lib/studio.functions";
+import type { PublicTrack } from "@/lib/studio.server";
 import {
   AudioLines,
   Search,
@@ -17,67 +23,11 @@ import {
   MessageCircle,
   Clock3,
   CheckCircle2,
+  Upload,
+  Wand2,
+  LogOut,
 } from "lucide-react";
-type Track = {
-  id: number;
-  title: string;
-  category: string;
-  duration: string;
-  description: string;
-  audio: string;
-  featured?: boolean;
-};
-const seed: Track[] = [
-  {
-    id: 1,
-    title: "ليلة العمر",
-    category: "زفات",
-    duration: "00:35",
-    description: "زفة دخول هادئة بطابع ملكي",
-    audio: "",
-    featured: true,
-  },
-  {
-    id: 2,
-    title: "فرحة أهل",
-    category: "زفات",
-    duration: "00:28",
-    description: "إيقاع احتفالي دافئ",
-    audio: "",
-  },
-  {
-    id: 3,
-    title: "يا أجمل حكاية",
-    category: "شيلات",
-    duration: "00:42",
-    description: "شيلة عاطفية بإحساس خليجي",
-    audio: "",
-  },
-  {
-    id: 4,
-    title: "ليلة مختلفة",
-    category: "مخصص",
-    duration: "00:31",
-    description: "عمل قابل للتخصيص بالأسماء",
-    audio: "",
-  },
-  {
-    id: 5,
-    title: "فرحة سنين",
-    category: "شيلات",
-    duration: "00:39",
-    description: "إهداء للأهل والأحباب",
-    audio: "",
-  },
-  {
-    id: 6,
-    title: "لحظة وصول",
-    category: "زفات",
-    duration: "00:33",
-    description: "موسيقى دخول أنيقة",
-    audio: "",
-  },
-];
+type Track = PublicTrack;
 const WHATSAPP_NUMBER = "967700000000"; // استبدله برقم الاستوديو بصيغة دولية دون +
 const greeting = () => {
   const h = new Date().getHours();
@@ -91,14 +41,12 @@ export default function App() {
   const [theme, setTheme] = useState<"dark" | "light">(
     () => (localStorage.getItem("layl-theme") as "dark" | "light") || "dark",
   );
-  const [tracks, setTracks] = useState<Track[]>(() => {
-    try {
-      return JSON.parse(localStorage.getItem("layl-tracks") || "null") || seed;
-    } catch {
-      return seed;
-    }
+  const fetchTracks = useServerFn(listTracks);
+  const { data: tracks = [], isLoading: loadingTracks } = useQuery({
+    queryKey: ["tracks"],
+    queryFn: () => fetchTracks(),
   });
-  const [favorites, setFavorites] = useState<number[]>(() => {
+  const [favorites, setFavorites] = useState<string[]>(() => {
     try {
       return JSON.parse(localStorage.getItem("layl-favorites") || "[]");
     } catch {
@@ -107,7 +55,7 @@ export default function App() {
   });
   const [category, setCategory] = useState("الكل"),
     [search, setSearch] = useState(""),
-    [playing, setPlaying] = useState<number | null>(null),
+    [playing, setPlaying] = useState<string | null>(null),
     [onlyFav, setOnlyFav] = useState(false),
     [request, setRequest] = useState(false),
     [admin, setAdmin] = useState(false),
@@ -118,7 +66,6 @@ export default function App() {
     document.documentElement.dataset["theme"] = theme;
     localStorage.setItem("layl-theme", theme);
   }, [theme]);
-  useEffect(() => localStorage.setItem("layl-tracks", JSON.stringify(tracks)), [tracks]);
   useEffect(() => localStorage.setItem("layl-favorites", JSON.stringify(favorites)), [favorites]);
   const visible = useMemo(
     () =>
@@ -135,8 +82,8 @@ export default function App() {
     window.setTimeout(() => setToast(""), 2800);
   };
   const play = (t: Track) => {
-    if (!t.audio) {
-      notify("أضف مسار ملف صوتي حقيقياً لهذا العمل لتفعيل المعاينة.");
+    if (!t.audioUrl) {
+      notify("لم يُرفع ملف صوتي لهذا العمل بعد.");
       return;
     }
     if (playing === t.id) {
@@ -145,7 +92,7 @@ export default function App() {
       return;
     }
     if (audio.current) {
-      audio.current.src = t.audio;
+      audio.current.src = t.audioUrl;
       void audio.current
         .play()
         .then(() => setPlaying(t.id))
@@ -254,6 +201,7 @@ export default function App() {
             01 <i /> 03
           </div>
         </section>
+        <Recommender tracks={tracks} play={play} playing={playing} />
         <section className="section" id="library">
           <div className="section-head">
             <div>
@@ -340,7 +288,13 @@ export default function App() {
                 </div>
               </article>
             ))}
-            {visible.length === 0 && (
+            {loadingTracks && (
+              <div className="empty">
+                <Music2 />
+                <b>جارٍ تحميل الأعمال...</b>
+              </div>
+            )}
+            {!loadingTracks && visible.length === 0 && (
               <div className="empty">
                 <Music2 />
                 <b>لا توجد أعمال مطابقة</b>
@@ -396,7 +350,7 @@ export default function App() {
         </div>
       </footer>
       {request && <RequestModal close={() => setRequest(false)} />}
-      {admin && <AdminModal tracks={tracks} setTracks={setTracks} close={() => setAdmin(false)} />}
+      {admin && <AdminModal tracks={tracks} close={() => setAdmin(false)} />}
       {toast && (
         <div className="toast">
           <CheckCircle2 size={17} />
@@ -478,30 +432,117 @@ function RequestModal({ close }: { close: () => void }) {
     </div>
   );
 }
-function AdminModal({
+function Recommender({
   tracks,
-  setTracks,
-  close,
+  play,
+  playing,
 }: {
   tracks: Track[];
-  setTracks: React.Dispatch<React.SetStateAction<Track[]>>;
-  close: () => void;
+  play: (t: Track) => void;
+  playing: string | null;
 }) {
-  const [title, setTitle] = useState(""),
-    [category, setCategory] = useState("زفات"),
-    [description, setDescription] = useState(""),
-    [audio, setAudio] = useState("");
-  const add = () => {
-    if (title.trim()) {
-      setTracks((old) => [
-        { id: Date.now(), title, category, description, audio, duration: "—" },
-        ...old,
-      ]);
-      setTitle("");
-      setDescription("");
-      setAudio("");
+  const recommend = useServerFn(recommendTracks);
+  const [mood, setMood] = useState(""),
+    [busy, setBusy] = useState(false),
+    [result, setResult] = useState<{
+      message: string;
+      picks: { id: string; reason: string }[];
+    } | null>(null),
+    [error, setError] = useState("");
+  const ask = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      const r = await recommend({ data: { mood } });
+      if (r.error) setError(r.error);
+      else setResult({ message: r.message, picks: r.picks });
+    } catch {
+      setError("تعذر الحصول على اقتراحات الآن، حاول مرة أخرى بعد قليل.");
+    } finally {
+      setBusy(false);
     }
   };
+  return (
+    <section className="section ai-match" id="match">
+      <div className="section-head">
+        <div>
+          <div className="eyebrow">
+            <i /> مستشار ليل
+          </div>
+          <h2>
+            صف لنا <em>لحظتك</em>
+          </h2>
+        </div>
+        <p>اكتب المناسبة أو الإحساس الذي تتخيله، وسنقترح لك الأعمال الأقرب إليه.</p>
+      </div>
+      <div className="ai-box">
+        <textarea
+          value={mood}
+          maxLength={500}
+          onChange={(e) => setMood(e.target.value)}
+          placeholder="مثلاً: دخول العروس بهدوء ورقي، أجواء عائلية دافئة..."
+        />
+        <button className="gold-btn" disabled={busy || mood.trim().length < 3} onClick={ask}>
+          {busy ? "جارٍ الاختيار..." : "اقترح لي"} <Wand2 size={16} />
+        </button>
+      </div>
+      {error && <p className="ai-error">{error}</p>}
+      {result && (
+        <div className="ai-results">
+          {result.message && <p className="ai-message">{result.message}</p>}
+          {result.picks.length === 0 && (
+            <p className="ai-message">لم نجد عملاً مطابقاً، اطلب زفتك الخاصة.</p>
+          )}
+          {result.picks.map((p) => {
+            const t = tracks.find((x) => x.id === p.id);
+            if (!t) return null;
+            return (
+              <div className="ai-pick" key={p.id}>
+                <button className="play" onClick={() => play(t)} aria-label="تشغيل">
+                  {playing === t.id ? <Pause fill="currentColor" /> : <Play fill="currentColor" />}
+                </button>
+                <div>
+                  <b>{t.title}</b> <small>{t.category}</small>
+                  <span>{p.reason}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
+const fmtDuration = (sec: number) =>
+  `${String(Math.floor(sec / 60)).padStart(2, "0")}:${String(Math.round(sec % 60)).padStart(2, "0")}`;
+const readDuration = (file: File) =>
+  new Promise<string>((resolve) => {
+    const a = new Audio();
+    const url = URL.createObjectURL(file);
+    a.preload = "metadata";
+    a.onloadedmetadata = () => {
+      resolve(Number.isFinite(a.duration) ? fmtDuration(a.duration) : "—");
+      URL.revokeObjectURL(url);
+    };
+    a.onerror = () => resolve("—");
+    a.src = url;
+  });
+
+function AdminModal({ tracks, close }: { tracks: Track[]; close: () => void }) {
+  const [session, setSession] = useState<Session | null>(null),
+    [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    const { data } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
+    return () => data.subscription.unsubscribe();
+  }, []);
+  useEffect(() => {
+    if (!session) return setIsAdmin(null);
+    supabase
+      .rpc("has_role", { _user_id: session.user.id, _role: "admin" })
+      .then(({ data }) => setIsAdmin(!!data));
+  }, [session]);
   return (
     <div className="backdrop" onMouseDown={(e) => e.target === e.currentTarget && close()}>
       <div className="modal admin">
@@ -511,64 +552,228 @@ function AdminModal({
         <div className="eyebrow">
           <i /> إدارة المكتبة
         </div>
-        <h2>إضافة عمل جديد</h2>
-        <p className="intro">
-          لوحة محلية تحفظ التغييرات في هذا المتصفح فقط، وليست نظام إدارة محمياً.
-        </p>
-        <div className="form">
-          <label className="wide">
-            عنوان العمل
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="اسم العمل"
-            />
-          </label>
-          <label>
-            التصنيف
-            <select value={category} onChange={(e) => setCategory(e.target.value)}>
-              <option>زفات</option>
-              <option>شيلات</option>
-              <option>مخصص</option>
-            </select>
-          </label>
-          <label>
-            مسار الصوت
-            <input
-              value={audio}
-              onChange={(e) => setAudio(e.target.value)}
-              placeholder="/audio/sample.mp3"
-            />
-          </label>
-          <label className="wide">
-            وصف العمل
-            <input
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="وصف قصير"
-            />
-          </label>
-        </div>
-        <button className="gold-btn submit" disabled={!title.trim()} onClick={add}>
-          <Plus /> إضافة العمل
+        {!session ? (
+          <AdminLogin />
+        ) : isAdmin === null ? (
+          <p className="intro">جارٍ التحقق...</p>
+        ) : !isAdmin ? (
+          <>
+            <h2>لا تملك صلاحية الإدارة</h2>
+            <p className="intro">هذا الحساب ليس حساب مالك الاستوديو.</p>
+            <button className="gold-btn submit" onClick={() => supabase.auth.signOut()}>
+              <LogOut /> تسجيل الخروج
+            </button>
+          </>
+        ) : (
+          <AdminPanel tracks={tracks} email={session.user.email ?? ""} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AdminLogin() {
+  const [mode, setMode] = useState<"in" | "up">("in"),
+    [email, setEmail] = useState(""),
+    [password, setPassword] = useState(""),
+    [msg, setMsg] = useState(""),
+    [busy, setBusy] = useState(false);
+  const submit = async () => {
+    setBusy(true);
+    setMsg("");
+    if (mode === "in") {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) setMsg("البريد أو كلمة المرور غير صحيحة.");
+    } else {
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { emailRedirectTo: window.location.origin },
+      });
+      setMsg(
+        error ? error.message : "تم إنشاء الحساب. افتح رسالة التأكيد في بريدك ثم سجّل الدخول.",
+      );
+    }
+    setBusy(false);
+  };
+  return (
+    <>
+      <h2>{mode === "in" ? "دخول المالك" : "إنشاء حساب المالك"}</h2>
+      <p className="intro">
+        {mode === "in"
+          ? "سجّل الدخول لإدارة الأعمال ورفع الملفات الصوتية."
+          : "أول حساب يُنشأ يصبح حساب مالك الاستوديو."}
+      </p>
+      <div className="form">
+        <label className="wide">
+          البريد الإلكتروني
+          <input type="email" dir="ltr" value={email} onChange={(e) => setEmail(e.target.value)} />
+        </label>
+        <label className="wide">
+          كلمة المرور
+          <input
+            type="password"
+            dir="ltr"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+        </label>
+      </div>
+      <button
+        className="gold-btn submit"
+        disabled={busy || !email || password.length < 6}
+        onClick={submit}
+      >
+        {mode === "in" ? "دخول" : "إنشاء الحساب"}
+      </button>
+      {msg && <small className="note">{msg}</small>}
+      <button className="link-btn" onClick={() => setMode(mode === "in" ? "up" : "in")}>
+        {mode === "in" ? "لا يوجد حساب بعد؟ أنشئ حساب المالك" : "لديك حساب؟ سجّل الدخول"}
+      </button>
+    </>
+  );
+}
+
+async function uploadAudio(trackId: string, file: File) {
+  const ext = (file.name.split(".").pop() || "mp3").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const path = `${trackId}/${Date.now()}.${ext}`;
+  const { error } = await supabase.storage
+    .from("track-audio")
+    .upload(path, file, { contentType: file.type || "audio/mpeg" });
+  if (error) throw error;
+  const duration = await readDuration(file);
+  const { error: e2 } = await supabase
+    .from("tracks")
+    .update({ audio_path: path, duration })
+    .eq("id", trackId);
+  if (e2) throw e2;
+}
+
+function AdminPanel({ tracks, email }: { tracks: Track[]; email: string }) {
+  const qc = useQueryClient();
+  const [title, setTitle] = useState(""),
+    [category, setCategory] = useState("زفات"),
+    [description, setDescription] = useState(""),
+    [file, setFile] = useState<File | null>(null),
+    [busy, setBusy] = useState<string | null>(null),
+    [msg, setMsg] = useState("");
+  const refresh = () => qc.invalidateQueries({ queryKey: ["tracks"] });
+  const run = async (key: string, fn: () => Promise<void>, ok: string) => {
+    setBusy(key);
+    setMsg("");
+    try {
+      await fn();
+      await refresh();
+      setMsg(ok);
+    } catch {
+      setMsg("حدث خطأ، حاول مرة أخرى.");
+    } finally {
+      setBusy(null);
+    }
+  };
+  const add = () =>
+    run(
+      "add",
+      async () => {
+        const { data, error } = await supabase
+          .from("tracks")
+          .insert({ title: title.trim(), category, description: description.trim() })
+          .select("id")
+          .single();
+        if (error) throw error;
+        if (file) await uploadAudio(data.id, file);
+        setTitle("");
+        setDescription("");
+        setFile(null);
+      },
+      "تمت إضافة العمل.",
+    );
+  return (
+    <>
+      <h2>إضافة عمل جديد</h2>
+      <p className="intro">
+        مسجّل باسم {email} ·{" "}
+        <button className="link-btn inline" onClick={() => supabase.auth.signOut()}>
+          تسجيل الخروج
         </button>
-        <div className="admin-list">
-          {tracks.map((t) => (
-            <div key={t.id}>
-              <span>
-                {t.title}
-                <small>{t.category}</small>
-              </span>
+      </p>
+      <div className="form">
+        <label className="wide">
+          عنوان العمل
+          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="اسم العمل" />
+        </label>
+        <label>
+          التصنيف
+          <select value={category} onChange={(e) => setCategory(e.target.value)}>
+            <option>زفات</option>
+            <option>شيلات</option>
+            <option>مخصص</option>
+          </select>
+        </label>
+        <label>
+          الملف الصوتي
+          <input
+            type="file"
+            accept="audio/*"
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          />
+        </label>
+        <label className="wide">
+          وصف العمل
+          <input
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="وصف قصير"
+          />
+        </label>
+      </div>
+      <button className="gold-btn submit" disabled={!title.trim() || !!busy} onClick={add}>
+        <Plus /> {busy === "add" ? "جارٍ الحفظ..." : "إضافة العمل"}
+      </button>
+      {msg && <small className="note">{msg}</small>}
+      <div className="admin-list">
+        {tracks.map((t) => (
+          <div key={t.id}>
+            <span>
+              {t.title}
+              <small>
+                {t.category} · {t.audioUrl ? "الصوت مرفوع" : "بلا صوت"}
+              </small>
+            </span>
+            <span className="admin-actions">
+              <label className="upload-btn" aria-label="رفع ملف صوتي">
+                {busy === t.id ? "..." : <Upload />}
+                <input
+                  type="file"
+                  accept="audio/*"
+                  hidden
+                  disabled={!!busy}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) void run(t.id, () => uploadAudio(t.id, f), `تم رفع صوت «${t.title}».`);
+                  }}
+                />
+              </label>
               <button
-                onClick={() => setTracks((old) => old.filter((x) => x.id !== t.id))}
+                disabled={!!busy}
+                onClick={() =>
+                  run(
+                    "del" + t.id,
+                    async () => {
+                      const { error } = await supabase.from("tracks").delete().eq("id", t.id);
+                      if (error) throw error;
+                    },
+                    "تم حذف العمل.",
+                  )
+                }
                 aria-label="حذف"
               >
                 <Trash2 />
               </button>
-            </div>
-          ))}
-        </div>
+            </span>
+          </div>
+        ))}
       </div>
-    </div>
+    </>
   );
 }
