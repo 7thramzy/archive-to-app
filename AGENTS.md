@@ -28,3 +28,4 @@ use the editor.
   own key and store it in Secrets.
 - **Secrets.** Lovable manages them. Do not put secret values in the repo.
 <!-- LOVABLE:END -->
+- The Studio Layl UI lives in src/components/StudioLayl.tsx with its own stylesheet src/studio-layl.css, rendered after hydration on / because it reads browser storage on first render.
