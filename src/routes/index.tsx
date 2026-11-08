@@ -1,23 +1,25 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import StudioLayl from "@/components/StudioLayl";
 
-// The home route ships no og:image, so serve-time hosting can inject the
-// project's social preview (explicit og:image or latest screenshot).
 export const Route = createFileRoute("/")({
+  head: () => ({
+    meta: [
+      { title: "استوديو ليل | زفات وشيلات" },
+      { name: "description", content: "استوديو ليل — زفات وشيلات بتفاصيل تصنع لحظتكم." },
+      { property: "og:title", content: "استوديو ليل | زفات وشيلات" },
+      { property: "og:description", content: "استوديو ليل — زفات وشيلات بتفاصيل تصنع لحظتكم." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
+      { name: "theme-color", content: "#0b0b0d" },
+    ],
+  }),
   component: Index,
 });
 
-// IMPORTANT: Replace this placeholder. See ./README.md for routing conventions.
+// The studio UI reads saved preferences from the browser, so render it after hydration.
 function Index() {
-  return (
-    <div
-      className="flex min-h-screen items-center justify-center"
-      style={{ backgroundColor: "#fcfbf8" }}
-    >
-      <img
-        data-lovable-blank-page-placeholder="REMOVE_THIS"
-        src="https://cdn.gpteng.co/blank-app-v1.svg"
-        alt="Your app will live here!"
-      />
-    </div>
-  );
+  const [ready, setReady] = useState(false);
+  useEffect(() => setReady(true), []);
+  return ready ? <StudioLayl /> : <div style={{ minHeight: "100vh", background: "#0b0b0d" }} />;
 }
