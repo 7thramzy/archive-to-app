@@ -10,7 +10,7 @@ export default function App(){
  const [favorites,setFavorites]=useState<number[]>(()=>{try{return JSON.parse(localStorage.getItem('layl-favorites')||'[]')}catch{return []}});
  const [category,setCategory]=useState('الكل'),[search,setSearch]=useState(''),[playing,setPlaying]=useState<number|null>(null),[onlyFav,setOnlyFav]=useState(false),[request,setRequest]=useState(false),[admin,setAdmin]=useState(false),[menu,setMenu]=useState(false),[toast,setToast]=useState('');
  const audio=useRef<HTMLAudioElement>(null);
- useEffect(()=>{document.documentElement.dataset.theme=theme;localStorage.setItem('layl-theme',theme)},[theme]);useEffect(()=>localStorage.setItem('layl-tracks',JSON.stringify(tracks)),[tracks]);useEffect(()=>localStorage.setItem('layl-favorites',JSON.stringify(favorites)),[favorites]);
+ useEffect(()=>{document.documentElement.dataset['theme']=theme;localStorage.setItem('layl-theme',theme)},[theme]);useEffect(()=>localStorage.setItem('layl-tracks',JSON.stringify(tracks)),[tracks]);useEffect(()=>localStorage.setItem('layl-favorites',JSON.stringify(favorites)),[favorites]);
  const visible=useMemo(()=>tracks.filter(t=>(category==='الكل'||t.category===category)&&(!onlyFav||favorites.includes(t.id))&&`${t.title} ${t.description}`.toLowerCase().includes(search.toLowerCase())),[tracks,category,onlyFav,favorites,search]);
  const notify=(s:string)=>{setToast(s);window.setTimeout(()=>setToast(''),2800)};
  const play=(t:Track)=>{if(!t.audio){notify('أضف مسار ملف صوتي حقيقياً لهذا العمل لتفعيل المعاينة.');return}if(playing===t.id){audio.current?.pause();setPlaying(null);return}if(audio.current){audio.current.src=t.audio;void audio.current.play().then(()=>setPlaying(t.id)).catch(()=>notify('تعذر تشغيل الملف؛ تحقق من المسار.'))}};
